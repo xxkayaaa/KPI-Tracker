@@ -30,9 +30,9 @@
     --pause-text: #8A8272;
     --break-bg: #E5EAF0;
     --break-text: #4F6B8A;
-    --end-bg: #F6DEDC;
-    --end-border: #E8C3C0;
-    --end-text: #A24E48;
+    --end-bg: #EEE3E2;
+    --end-border: #E1C9C7;
+    --end-text: #84534D;
 
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
@@ -61,9 +61,9 @@
       --pause-text: #8B8780;
       --break-bg: #232A33;
       --break-text: #8FB0D6;
-      --end-bg: #3A2624;
-      --end-border: #4E332F;
-      --end-text: #E39B93;
+      --end-bg: #332524;
+      --end-border: #4C3633;
+      --end-text: #CA8D86;
     }
   }
 
@@ -88,9 +88,9 @@
     --pause-text: #8B8780;
     --break-bg: #232A33;
     --break-text: #8FB0D6;
-    --end-bg: #3A2624;
-    --end-border: #4E332F;
-    --end-text: #E39B93;
+    --end-bg: #332524;
+    --end-border: #4C3633;
+    --end-text: #CA8D86;
   }
 
   html, body { height: 100%; }
@@ -597,9 +597,17 @@
     text-align: center;
   }
 
-  .meter-bar-label { font-size: 12px; font-weight: 500; color: var(--text); }
-  .meter-bar-value { font-size: 13px; font-weight: 600; color: var(--text); transition: color .3s ease; }
-  .meter-bar-value .of { font-weight: 400; font-size: 11px; color: var(--text-muted); }
+  .meter-bar-label,
+  .meter-bar-value {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    /* halo so text stays legible whether it's sitting over the empty
+       track or the filled portion */
+    text-shadow: 0 0 5px var(--panel), 0 0 5px var(--panel), 0 0 5px var(--panel);
+  }
+  .meter-bar-value { font-size: 13px; font-weight: 600; transition: color .3s ease; }
+  .meter-bar-value .of { font-weight: 500; font-size: 11px; color: var(--text); opacity: .6; }
 
   .meter-marker {
     position: absolute;
@@ -653,6 +661,7 @@
   }
 
   .status-pill.neutral { background: var(--panel-alt); color: var(--text-muted); }
+  .status-pill.steady { background: var(--break-bg); color: var(--break-text); }
   .status-pill .dot-sm { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
   .compare-table { margin-top: 6px; width: 100%; border-collapse: collapse; font-size: 12.5px; }
@@ -1380,29 +1389,31 @@
 
   // Adherence works in minutes out of / back into adherence, against paid shift time
   // (start to finish, minus the 30 min unpaid lunch):
-  //  - signing on after the scheduled start costs the minutes late
-  //  - signing off before the scheduled finish costs the minutes early
+  //  - signing on late or signing off early costs those minutes outright —
+  //    company policy makes this up at month end instead, so it can't be
+  //    earned back here
   //  - each break costs how far its start was from schedule (early or late)
   //    plus any minutes it ran over its allowance
-  //  - coming back early from a break earns those minutes back 1:1, which can
-  //    offset lost minutes elsewhere (but never pushes adherence above 100%)
+  //  - coming back early from a break earns minutes back 1:1, but only
+  //    against break-related loss — never against a late sign-on/off
   const UNPAID_LUNCH_MINS = 30;
   function paidMinutes() {
     return Math.max(1, toMin(CONFIG.shift.end) - toMin(CONFIG.shift.start) - UNPAID_LUNCH_MINS);
   }
   function adherencePct() {
     if (today.signOnMin === null && today.signOffMin === null && !today.breakLog.length) return null;
-    let lost = 0, earned = 0;
-    if (today.signOnMin !== null) lost += Math.max(0, today.signOnMin - toMin(CONFIG.shift.start));
-    if (today.signOffMin !== null) lost += Math.max(0, toMin(CONFIG.shift.end) - today.signOffMin);
+    let fixedLost = 0;   // sign-on/off: never earned back
+    let breakLost = 0, earned = 0;
+    if (today.signOnMin !== null) fixedLost += Math.max(0, today.signOnMin - toMin(CONFIG.shift.start));
+    if (today.signOffMin !== null) fixedLost += Math.max(0, toMin(CONFIG.shift.end) - today.signOffMin);
     today.breakLog.forEach((b) => {
       const sched = CONFIG.breaks[b.key];
       const dur = b.durSec / 60;
-      lost += Math.abs(b.startMin - toMin(sched.time));
-      lost += Math.max(0, dur - sched.mins);
+      breakLost += Math.abs(b.startMin - toMin(sched.time));
+      breakLost += Math.max(0, dur - sched.mins);
       earned += Math.max(0, sched.mins - dur);
     });
-    const net = Math.max(0, lost - earned);
+    const net = fixedLost + Math.max(0, breakLost - earned);
     const pct = (1 - net / paidMinutes()) * 100;
     return Math.max(0, Math.min(100, Math.round(pct * 10) / 10));
   }
@@ -1481,13 +1492,21 @@
 
     const pill = document.getElementById('statusPill');
     const text = document.getElementById('statusText');
+    pill.classList.remove('neutral', 'steady');
     if (total === 0) {
       pill.classList.add('neutral');
       text.textContent = 'No data yet';
     } else {
       const ratio = improved / total;
-      pill.classList.toggle('neutral', ratio < 0.7);
-      text.textContent = ratio >= 0.7 ? 'Improving' : ratio >= 0.4 ? 'Mixed' : 'Behind pace';
+      if (ratio >= 0.7) {
+        text.textContent = 'Improving';
+      } else if (ratio >= 0.4) {
+        pill.classList.add('steady');
+        text.textContent = 'Steady';
+      } else {
+        pill.classList.add('neutral');
+        text.textContent = 'Behind pace';
+      }
     }
 
     renderChart(); // the chart's "Week + today" and "Today" bars follow live activity too
