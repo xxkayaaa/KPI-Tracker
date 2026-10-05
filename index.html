@@ -1114,7 +1114,7 @@
           <option value="calls">Calls</option>
           <option value="cases">Cases</option>
           <option value="ahtCalls">AHT calls</option>
-          <option value="ahtCases">AHT completed cases</option>
+          <option value="ahtCases">AHT cases</option>
           <option value="acw">ACW</option>
           <option value="workload">Completed workload</option>
           <option value="adherence">Adherence</option>
@@ -1213,7 +1213,7 @@
   };
   const METRIC_KEYS = ['calls', 'cases', 'ahtCalls', 'ahtCases', 'acw', 'workload', 'adherence'];
   const METRIC_LABELS = {
-    calls: 'Calls', cases: 'Cases', ahtCalls: 'AHT calls', ahtCases: 'AHT completed cases',
+    calls: 'Calls', cases: 'Cases', ahtCalls: 'AHT calls', ahtCases: 'AHT cases',
     acw: 'ACW', workload: 'Completed workload', adherence: 'Adherence'
   };
 
@@ -1236,7 +1236,7 @@
       case 'calls': return today.calls > 0 ? today.calls : null;
       case 'cases': return today.cases > 0 ? today.cases : null;
       case 'ahtCalls': return today.calls > 0 ? avgAHTCalls() : null;
-      case 'ahtCases': return today.cases > 0 ? avgAHTCases() : null;
+      case 'ahtCases': return today.ahtCaseCount > 0 ? avgAHTCases() : null;
       case 'acw': return today.acwCount > 0 ? avgACW() : null;
       case 'workload': return workload() > 0 ? workload() : null;
       case 'adherence': return adherencePct();
@@ -1376,6 +1376,7 @@
     calls: 0, callSeconds: 0,
     cases: 0, caseSeconds: 0,      // closed cases only
     casesAwaiting: 0, casesTransferred: 0,
+    ahtCaseCount: 0, ahtCaseSeconds: 0,  // all dispositions - closed, awaiting, transferred
     acwSeconds: 0, acwCount: 0,
     signOnMin: null,                // typed sign-on time, as minutes since midnight
     signOffMin: null,               // typed sign-off time (entered at End day)
@@ -1383,7 +1384,7 @@
   };
 
   function avgAHTCalls() { return today.calls ? today.callSeconds / today.calls : 0; }
-  function avgAHTCases() { return today.cases ? today.caseSeconds / today.cases : 0; }
+  function avgAHTCases() { return today.ahtCaseCount ? today.ahtCaseSeconds / today.ahtCaseCount : 0; }
   function avgACW() { return today.acwCount ? today.acwSeconds / today.acwCount : 0; }
   function workload() { return today.calls + today.cases; }
 
@@ -1679,6 +1680,9 @@
     if (!btn) return;
     const disposition = btn.dataset.disposition;
 
+    today.ahtCaseCount += 1;
+    today.ahtCaseSeconds += pendingCaseDuration;
+
     if (disposition === 'closed') {
       today.cases += 1;
       today.caseSeconds += pendingCaseDuration;
@@ -1688,9 +1692,11 @@
     } else if (disposition === 'awaiting') {
       today.casesAwaiting += 1;
       flash(document.getElementById('v-cases'));
+      flash(document.getElementById('v-ahtcases'));
     } else if (disposition === 'transfer') {
       today.casesTransferred += 1;
       flash(document.getElementById('v-cases'));
+      flash(document.getElementById('v-ahtcases'));
     }
 
     refreshTodayLabels();
@@ -2030,6 +2036,7 @@
     today.calls = 0; today.callSeconds = 0;
     today.cases = 0; today.caseSeconds = 0;
     today.casesAwaiting = 0; today.casesTransferred = 0;
+    today.ahtCaseCount = 0; today.ahtCaseSeconds = 0;
     today.acwSeconds = 0; today.acwCount = 0;
     today.signOnMin = null; today.signOffMin = null;
     today.breakLog = [];
